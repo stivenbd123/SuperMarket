@@ -22,8 +22,6 @@ class ProductController extends Controller
             $query->where('id', $request->id);
         }
 
-        
-
         return response()->json($query->orderBy('created_at', 'desc')->get(), 200);
 
         
@@ -45,7 +43,7 @@ class ProductController extends Controller
             'photo' => 'required|image|mimes:jpeg,png,webp|max:2048'
         ]);
 
-        $product_photo = $request->file('photo')->store('product_photos', 'public');
+        $image_url = $request->file('photo')->store('product_photos', 'public');
         $name = $request->name;
         $base = strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $name), 0, 4));
 
@@ -64,7 +62,7 @@ class ProductController extends Controller
             'stock' => $request->stock,
             'min_stock' => $request->min_stock,
             'unit' => $request->unit,
-            'photo' => $product_photo
+            'photo' => $image_url
 
         ]);
         return response()->json($product, 201);
@@ -73,17 +71,43 @@ class ProductController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show($id)
     {
-        //
+        $product = Product::with('category')->find($id);
+
+        if(!$product){
+            return response()->json([
+                'message' => 'Producto no encontrado'
+            ], 404);
+        }
+
+        return response()->json($product);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
-    {
-        //
+    public function update(Request $request, $id){
+
+        $product = Product::find($id);
+
+        if(!$product){
+            return response()->json([
+                'message' => 'Producto no encontrado'
+                
+            ], 404);
+        }
+
+        $request->validate([
+            'name' => 'sometimes|string|max:50',
+            'description' => 'sometimes|string|max:200',
+            'category_id' => 'sometimes|integer|exists:categories,id',
+            'price' => 'sometimes|decimal:2',
+        ]);
+        
+        $product->update($request->validated());
+        
+        return response()->json($product);
     }
 
     /**

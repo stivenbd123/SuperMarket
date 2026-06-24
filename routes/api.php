@@ -9,14 +9,14 @@ use App\Http\Controllers\ProductController;
 //Ruoutes protected by sanctum 
 
 Route::middleware('auth:sanctum')->group(function(){
-    Route::get('/products', [ProductController::class, 'index']);      
-
+    
     
     Route::get('/user', function (Request $request) {
         return $request->user();
         })->middleware('auth:sanctum');
-
-
+        
+        
+    Route::get('/products', [ProductController::class, 'index']);      
     Route::post('/products', [ProductController::class, 'store']);       
 
 

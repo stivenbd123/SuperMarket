@@ -17,6 +17,7 @@ return new class extends Migration
             $table->foreignId('user_id')->nullable()->constrained('users');
             $table->enum('type', ['entrada', 'salida', 'ajuste', 'venta']);
             $table->text('motive')->nullable();
+            $table->integer('quantity');
             $table->integer('stock_before');
             $table->integer('stock_after');
             $table->timestamps();
