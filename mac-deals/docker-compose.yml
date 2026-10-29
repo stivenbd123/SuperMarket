@@ -1,18 +1,35 @@
-# Solo la base de datos. El script corre en tu Mac (necesita tu Chrome real).
-#   docker compose up -d      -> arranca Postgres
-#   docker compose down       -> lo apaga (los datos se quedan en el volumen)
+# docker compose up -d --build   -> arranca todo
+# docker compose logs -f app     -> ver qué está haciendo el script
+# docker compose down            -> apaga todo (los datos se quedan)
 services:
   db:
     image: postgres:17
-    restart: unless-stopped   # vuelve a arrancar cuando abres Docker Desktop
+    restart: unless-stopped
     environment:
       POSTGRES_USER: macdeals
       POSTGRES_PASSWORD: macdeals
       POSTGRES_DB: macdeals
     ports:
-      - "127.0.0.1:5432:5432" # solo accesible desde tu Mac
+      - "127.0.0.1:5432:5432"   # para verla desde VS Code / DBeaver
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "macdeals"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://macdeals:macdeals@db:5432/macdeals
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}   # viene del archivo .env
+    volumes:
+      - .:/app
+    shm_size: 1gb   # Chromium se cae con la memoria compartida por defecto de Docker
 
 volumes:
   pgdata:

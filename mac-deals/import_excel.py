@@ -1,45 +1,49 @@
-"""Paso 2: importar la hoja "Precios por modelo" a market_refs.
-
-Esqueleto: completa los TODO. Listo cuando:
-  SELECT COUNT(*) FROM market_refs                -> 131
-  my_sale_cop de 'MacBook Pro M1 Pro 16"'         -> 3900000
-"""
+# Importa la hoja "Precios por modelo" de tu Excel a la tabla market_refs.
+# Se corre a mano cada vez que actualices el Excel:
+#   docker compose run --rm app python import_excel.py
 from openpyxl import load_workbook
 
-from db import connect, now_utc
+import db
 
-EXCEL_PATH = "Macs_Marketplace_Colombia_oct2026.xlsx"
+EXCEL_FILE = "Macs_Marketplace_Colombia_oct2026.xlsx"
 SHEET = "Precios por modelo"
 
 
 def to_int(value):
-    """Celda -> entero en pesos, o None si está vacía."""
-    # TODO: si value es None o "", devuelve None.
-    # TODO: si no, devuelve int(round(float(value))).
-    raise NotImplementedError
+    # Celda vacía -> None, número -> entero
+    if value is None or value == "":
+        return None
+    return int(round(float(value)))
 
 
-def main():
-    wb = load_workbook(EXCEL_PATH, data_only=True)  # data_only: el valor, no la fórmula
-    ws = wb[SHEET]
-    conn = connect()
-    imported_at = now_utc()
-    count = 0
+conn = db.connect()
+workbook = load_workbook(EXCEL_FILE, data_only=True)  # data_only: el valor, no la fórmula
+sheet = workbook[SHEET]
 
-    # min_row=2 salta la fila de encabezados. Mira el Excel: ¿los datos empiezan en la 2?
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        group, n_listings, min_cop, p25, median, max_cop, my_sale = row[:7]
-        if not group:
-            continue  # filas vacías al final de la hoja
+count = 0
+# min_row=2 para saltar los encabezados
+for row in sheet.iter_rows(min_row=2, values_only=True):
+    group = row[0]       # A
+    if not group:
+        continue         # fila vacía
 
-        # TODO: INSERT INTO market_refs (...) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        #       ON CONFLICT (group_key) DO UPDATE SET ... = excluded.... (todas las columnas)
-        #       Usa to_int() en cada número y group.strip() en el nombre.
-        count += 1
+    conn.execute(
+        """INSERT INTO market_refs
+             (group_key, listings_count, min_cop, p25_cop, median_cop, max_cop,
+              my_sale_cop, imported_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+           ON CONFLICT (group_key) DO UPDATE SET
+             listings_count = excluded.listings_count,
+             min_cop        = excluded.min_cop,
+             p25_cop        = excluded.p25_cop,
+             median_cop     = excluded.median_cop,
+             max_cop        = excluded.max_cop,
+             my_sale_cop    = excluded.my_sale_cop,
+             imported_at    = excluded.imported_at""",
+        (str(group).strip(), to_int(row[1]), to_int(row[2]), to_int(row[3]),
+         to_int(row[4]), to_int(row[5]), to_int(row[6]), db.now()),
+    )
+    count += 1
 
-    conn.commit()
-    print(f"{count} filas importadas")
-
-
-if __name__ == "__main__":
-    main()
+conn.commit()
+print(count, "grupos importados")
