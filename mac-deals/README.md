@@ -27,7 +27,7 @@ la compara con tu Excel y te muestra las que dejan $1.200.000 COP o más.
 
 ## Ver la base
 
-DBeaver o la extensión "PostgreSQL" de VS Code: `localhost:5432`,
+DBeaver o la extensión "PostgreSQL" de VS Code: `localhost:5433`,
 usuario `macdeals`, clave `macdeals`, base `macdeals`.
 
 ## En la nube

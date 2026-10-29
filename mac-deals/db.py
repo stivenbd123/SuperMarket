@@ -7,7 +7,7 @@ from psycopg.rows import dict_row
 
 # docker-compose.yml le pasa DATABASE_URL al script.
 DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://macdeals:macdeals@localhost:5432/macdeals"
+    "DATABASE_URL", "postgresql://macdeals:macdeals@localhost:5433/macdeals"
 )
 
 
