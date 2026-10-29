@@ -6,7 +6,7 @@ Esqueleto: completa los TODO. Listo cuando:
 """
 from openpyxl import load_workbook
 
-from db import connect, now_iso
+from db import connect, now_utc
 
 EXCEL_PATH = "Macs_Marketplace_Colombia_oct2026.xlsx"
 SHEET = "Precios por modelo"
@@ -23,7 +23,7 @@ def main():
     wb = load_workbook(EXCEL_PATH, data_only=True)  # data_only: el valor, no la fórmula
     ws = wb[SHEET]
     conn = connect()
-    imported_at = now_iso()
+    imported_at = now_utc()
     count = 0
 
     # min_row=2 salta la fila de encabezados. Mira el Excel: ¿los datos empiezan en la 2?
@@ -32,7 +32,7 @@ def main():
         if not group:
             continue  # filas vacías al final de la hoja
 
-        # TODO: INSERT INTO market_refs (...) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        # TODO: INSERT INTO market_refs (...) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         #       ON CONFLICT (group_key) DO UPDATE SET ... = excluded.... (todas las columnas)
         #       Usa to_int() en cada número y group.strip() en el nombre.
         count += 1

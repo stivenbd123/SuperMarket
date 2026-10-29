@@ -1,0 +1,18 @@
+# Solo la base de datos. El script corre en tu Mac (necesita tu Chrome real).
+#   docker compose up -d      -> arranca Postgres
+#   docker compose down       -> lo apaga (los datos se quedan en el volumen)
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped   # vuelve a arrancar cuando abres Docker Desktop
+    environment:
+      POSTGRES_USER: macdeals
+      POSTGRES_PASSWORD: macdeals
+      POSTGRES_DB: macdeals
+    ports:
+      - "127.0.0.1:5432:5432" # solo accesible desde tu Mac
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

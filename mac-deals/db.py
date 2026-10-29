@@ -1,27 +1,32 @@
-"""Acceso a la base de datos del buscador de Macs.
+"""Acceso a la base de datos del buscador de Macs (PostgreSQL).
 
-Ejecuta `python db.py` para crear mac_deals.db y ver la demo de save_listing.
+Antes: `docker compose up -d` para arrancar Postgres.
+Ejecuta `python db.py` para crear las tablas y ver la demo de save_listing.
 """
-import sqlite3
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+import psycopg
+from psycopg.rows import dict_row
+
 HERE = Path(__file__).resolve().parent
-DB_PATH = HERE / "mac_deals.db"
 SCHEMA_PATH = HERE / "schema.sql"
+# Igual a lo que dice docker-compose.yml. Para otra base: export DATABASE_URL=...
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL", "postgresql://macdeals:macdeals@localhost:5432/macdeals"
+)
 
 
-def now_iso():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+def now_utc():
+    return datetime.now(timezone.utc)
 
 
-def connect(path=DB_PATH):
+def connect(url=DATABASE_URL):
     """Abre la base y crea las tablas si no existen."""
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row  # filas como dict: row["price_usd_cents"]
-    # SQLite NO revisa los FOREIGN KEY a menos que se lo pidas en cada conexión.
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    conn = psycopg.connect(url, row_factory=dict_row)  # filas como dict: row["price_usd_cents"]
+    conn.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+    conn.commit()
     return conn
 
 
@@ -40,14 +45,14 @@ def get_or_create_product(conn, p):
     conn.execute(
         """INSERT INTO products
              (model, chip, screen_in, ram_gb, storage_gb, cpu_cores, gpu_cores, release_year)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
            ON CONFLICT DO NOTHING""",
         (*key, p.get("release_year")),
     )
     row = conn.execute(
         """SELECT id FROM products
-           WHERE model = ? AND chip = ? AND screen_in = ? AND ram_gb = ?
-             AND storage_gb = ? AND cpu_cores = ? AND gpu_cores = ?""",
+           WHERE model = %s AND chip = %s AND screen_in = %s AND ram_gb = %s
+             AND storage_gb = %s AND cpu_cores = %s AND gpu_cores = %s""",
         key,
     ).fetchone()
     return row["id"]
@@ -63,10 +68,10 @@ def save_listing(conn, source, external_id, product, price_usd_cents,
       'price_changed' -> ya existía pero el precio cambió
     """
     product_id = get_or_create_product(conn, product)
-    ts = now_iso()
+    ts = now_utc()
 
     old = conn.execute(
-        "SELECT price_usd_cents FROM listings WHERE source = ? AND external_id = ?",
+        "SELECT price_usd_cents FROM listings WHERE source = %s AND external_id = %s",
         (source, external_id),
     ).fetchone()
 
@@ -76,7 +81,7 @@ def save_listing(conn, source, external_id, product, price_usd_cents,
         """INSERT INTO listings
              (source, external_id, product_id, seller, condition, url,
               price_usd_cents, first_seen_at, last_seen_at, is_active)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
            ON CONFLICT (source, external_id) DO UPDATE SET
              product_id      = excluded.product_id,
              seller          = excluded.seller,
@@ -84,7 +89,7 @@ def save_listing(conn, source, external_id, product, price_usd_cents,
              url             = excluded.url,
              price_usd_cents = excluded.price_usd_cents,
              last_seen_at    = excluded.last_seen_at,
-             is_active       = 1""",
+             is_active       = TRUE""",
         (source, external_id, product_id, seller, condition, url,
          price_usd_cents, ts, ts),
     )
@@ -99,11 +104,11 @@ def save_listing(conn, source, external_id, product, price_usd_cents,
     # El historial solo crece cuando hay un precio nuevo.
     if status != "same":
         listing_id = conn.execute(
-            "SELECT id FROM listings WHERE source = ? AND external_id = ?",
+            "SELECT id FROM listings WHERE source = %s AND external_id = %s",
             (source, external_id),
         ).fetchone()["id"]
         conn.execute(
-            "INSERT INTO price_history (listing_id, price_usd_cents, seen_at) VALUES (?, ?, ?)",
+            "INSERT INTO price_history (listing_id, price_usd_cents, seen_at) VALUES (%s, %s, %s)",
             (listing_id, price_usd_cents, ts),
         )
 
@@ -112,16 +117,17 @@ def save_listing(conn, source, external_id, product, price_usd_cents,
 
 
 def start_run(conn, source):
-    cur = conn.execute(
-        "INSERT INTO runs (source, started_at) VALUES (?, ?)", (source, now_iso())
-    )
+    run_id = conn.execute(
+        "INSERT INTO runs (source, started_at) VALUES (%s, %s) RETURNING id",
+        (source, now_utc()),
+    ).fetchone()["id"]
     conn.commit()
-    return cur.lastrowid
+    return run_id
 
 
 def finish_run(conn, run_id, status, listings_found=None, error=None):
     conn.execute(
-        "UPDATE runs SET status = ?, listings_found = ?, error = ? WHERE id = ?",
+        "UPDATE runs SET status = %s, listings_found = %s, error = %s WHERE id = %s",
         (status, listings_found, error, run_id),
     )
     conn.commit()
@@ -147,6 +153,7 @@ if __name__ == "__main__":
     conn.execute("DELETE FROM listings WHERE source = 'demo'")
     conn.commit()
 
-    tables = [r["name"] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")]
+    tables = [r["table_name"] for r in conn.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'public' ORDER BY table_name")]
     print("tablas:", ", ".join(tables))
